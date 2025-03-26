@@ -1,5 +1,25 @@
 import asyncio
 import logging
+import sys
+import json
+
+with open("config.json", "r") as config_file:
+    config = json.load(config_file)
+
+TOKEN = config["TOKEN"]
+CHAT_ID = config["CHAT_ID"]
+
+APPS = config["APPS"]
+
+REQUIRED_MODULES = ["aiohttp", "aiogram", "apscheduler", "google_play_scraper"]
+
+for module in REQUIRED_MODULES:
+    try:
+        __import__(module)
+    except ImportError:
+        print(f"Ошибка: {module} не установлен. Установите командой: pip install {module}")
+        sys.exit(1)
+
 import aiohttp
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -7,24 +27,8 @@ from aiogram.utils.markdown import bold
 from aiogram.types import Message
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram.client.default import DefaultBotProperties
-import json
 from datetime import datetime
 from google_play_scraper import reviews, app, Sort
-
-# --- Настройки ---
-TOKEN = "7684331016:AAGC7kDbiROGcHOBmzr73PCNHi0hY36iISs"
-CHAT_ID = "125844966"
-
-APPS = {
-    "activ SuperApp": {
-        "google_package": "com.kcell.myactiv",
-        "apple_id": "917517216"
-    },
-    "Kcell SuperApp": {
-        "google_package": "com.kcell.mykcell",
-        "apple_id": "915329046"
-    }
-}
 
 # --- Логирование ---
 logging.basicConfig(level=logging.INFO)
@@ -56,7 +60,7 @@ async def fetch_reviews_apple(app_id):
             try:
                 data = json.loads(text)  # Корректный парсинг
             except aiohttp.ContentTypeError:
-                print("Ошибка: полученunexpected content-type")
+                print("Ошибка: получен unexpected content-type")
 
             if "feed" in data and "entry" in data["feed"]:
                 reviews = data["feed"]["entry"][1:]  # Первый элемент — это мета-информация
@@ -105,12 +109,13 @@ async def get_reviews():
 
 async def send_reviews():
     """Отправляет новые отзывы"""
+    logging.info("Функция send_reviews() запущена")
     reviews = await get_reviews()
     for app, app_reviews in reviews.items():
-        message_text = f"📱 <b>{app}</b>\n"
+        message_text = f"<b>{app}</b>\n\n"
         if app_reviews:
             for review in app_reviews:
-                message_text += f"🛍 <b>{review['source']}</b>\n⭐ {review['rating']} — {review['date']}\n\"{review['content']}\"\n\n"
+                message_text += f"<b>{review['source']}</b>\n⭐ {review['rating']} — {review['date']}\n<i>«{review['content']}»</i>\n\n"
             if len(message_text) > 4000:
                 chunks = [message_text[i:i+4000] for i in range(0, len(message_text), 4000)]
                 for chunk in chunks:
@@ -118,7 +123,7 @@ async def send_reviews():
             else:
                 await bot.send_message(CHAT_ID, message_text)
         else:
-            await bot.send_message(CHAT_ID, f"📱 <b>{app}</b>\nНовых отзывов нет.")
+            await bot.send_message(CHAT_ID, f"<b>{app}</b>\n\nНовых отзывов нет.")
 
 async def get_ratings():
     """Получает средний рейтинг приложений"""
@@ -138,29 +143,56 @@ async def cmd_ratings(message: Message):
     message_text = ""
     for app, rating_data in ratings.items():
         message_text += f"<b>{app}</b>\n"
-        message_text += f"🛍 <b>Google Play</b>: ⭐ {rating_data['google']}\n"
-        message_text += f"🍏 <b>App Store</b>: ⭐ {rating_data['apple']}\n\n"
+        message_text += f"Google Play: ⭐ {rating_data['google']}\n"
+        message_text += f"App Store: ⭐ {rating_data['apple']}\n\n"
     await message.answer(message_text)
+
+@dp.message(Command("history"))
+async def cmd_history(message: Message):
+    try:
+        with open("sent_reviews.json", "r") as f:
+            sent_reviews_list = json.load(f)
+        if not sent_reviews_list:
+            await message.answer("История пуста. Отзывы еще не отправлялись.")
+            return
+        
+        history_text = "<b>История отправленных отзывов:</b>\n\n"
+        for review in sent_reviews_list[-10:]:  # Показываем последние 10 записей
+            history_text += f"{review}\n\n"
+        
+        await message.answer(history_text)
+    except (FileNotFoundError, json.JSONDecodeError):
+        await message.answer("История пуста или повреждена.")
+
+@dp.message(Command("clear_history"))
+async def cmd_clear_history(message: Message):
+    with open("sent_reviews.json", "w") as f:
+        json.dump([], f)
+    await message.answer("История отправленных отзывов очищена.")
 
 # --- Обработчики команд ---
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     text = (
-        "👋 Привет! Я бот для мониторинга отзывов в Google Play и App Store.\n\n"
-        "📌 Доступные команды:\n"
-        "🔹 /reviews — новые отзывы\n"
-        "🔹 /ratings — средний рейтинг приложений\n"
-        "🔹 /help — справка\n"
+        "Этот бот отслеживает отзывы пользователей о приложениях activ и Kcell.\n\n"
+        "<b>Доступные команды:</b>\n"
+        "/reviews — получить новые отзывы\n"
+        "/ratings — средний рейтинг приложений\n"
+        "/history — история отправленных отзывов\n"
+        "/clear_history — очистить историю ранее полученных отзывов\n"
+        "/help — справка\n"
     )
     await message.answer(text)
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     text = (
-        "ℹ️ Этот бот отслеживает отзывы пользователей о приложениях activ SuperApp и Kcell SuperApp.\n\n"
-        "📌 Доступные команды:\n"
-        "🔹 /reviews — получить новые отзывы\n"
-        "🔹 /ratings — средний рейтинг приложений\n"
+        "Этот бот отслеживает отзывы пользователей о приложениях activ и Kcell.\n\n"
+        "<b>Доступные команды:</b>\n"
+        "/reviews — получить новые отзывы\n"
+        "/ratings — средний рейтинг приложений\n"
+        "/history — история отправленных отзывов\n"
+        "/clear_history — очистить историю ранее полученных отзывов\n"
     )
     await message.answer(text)
 
@@ -170,12 +202,16 @@ async def cmd_new(message: Message):
 
 # --- Планировщик задач ---
 scheduler = AsyncIOScheduler()
-scheduler.add_job(send_reviews, "cron", hour=9)  # Отправка в 09:00
+scheduler.add_job(send_reviews, "cron", hour=13, minute=59, timezone="Asia/Almaty")  # Отправка в 13:59
+
+# --- Функция main ---
+async def main():
+    scheduler.start()  # Запуск планировщика
+    await dp.start_polling(bot)  # Запуск бота
 
 # --- Запуск бота ---
-async def main():
-    scheduler.start()
-    await dp.start_polling(bot)
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        logging.error(f"Критическая ошибка: {e}", exc_info=True)

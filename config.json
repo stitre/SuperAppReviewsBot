@@ -1,0 +1,14 @@
+{
+    "TOKEN": "7684331016:AAGC7kDbiROGcHOBmzr73PCNHi0hY36iISs",
+    "CHAT_ID": "125844966",
+    "APPS": {
+        "activ SuperApp": {
+            "google_package": "com.kcell.myactiv",
+            "apple_id": "917517216"
+        },
+        "Kcell SuperApp": {
+            "google_package": "com.kcell.mykcell",
+            "apple_id": "915329046"
+        }
+    }
+}
