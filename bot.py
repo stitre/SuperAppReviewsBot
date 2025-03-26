@@ -107,10 +107,16 @@ async def get_reviews():
         all_reviews[app_name] = google_reviews + apple_reviews
     return all_reviews
 
-async def send_reviews():
+async def send_reviews(chat_id: int = None):
     """Отправляет новые отзывы"""
     logging.info("Функция send_reviews() запущена")
     reviews = await get_reviews()
+    try:
+        with open("groups.json", "r") as f:
+            chat_ids = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        chat_ids = []
+
     for app, app_reviews in reviews.items():
         message_text = f"<b>{app}</b>\n\n"
         if app_reviews:
@@ -119,11 +125,14 @@ async def send_reviews():
             if len(message_text) > 4000:
                 chunks = [message_text[i:i+4000] for i in range(0, len(message_text), 4000)]
                 for chunk in chunks:
-                    await bot.send_message(CHAT_ID, chunk)
+                    for chat_id in chat_ids:
+                        await bot.send_message(chat_id, chunk)
             else:
-                await bot.send_message(CHAT_ID, message_text)
+                for chat_id in chat_ids:
+                    await bot.send_message(chat_id, message_text)
         else:
-            await bot.send_message(CHAT_ID, f"<b>{app}</b>\n\nНовых отзывов нет.")
+            for chat_id in chat_ids:
+                await bot.send_message(chat_id, f"<b>{app}</b>\n\nНовых отзывов нет.")
 
 async def get_ratings():
     """Получает средний рейтинг приложений"""
@@ -170,6 +179,23 @@ async def cmd_clear_history(message: Message):
         json.dump([], f)
     await message.answer("История отправленных отзывов очищена.")
 
+@dp.message(Command("addgroup"))
+async def cmd_addgroup(message: Message):
+    if message.chat.type in ["group", "supergroup"]:
+        try:
+            with open("groups.json", "r") as f:
+                chat_ids = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            chat_ids = []
+        
+        if message.chat.id not in chat_ids:
+            chat_ids.append(message.chat.id)
+            with open("groups.json", "w") as f:
+                json.dump(chat_ids, f)
+            await message.answer("Группа добавлена для автоотправки отзывов.")
+        else:
+            await message.answer("Эта группа уже добавлена.")
+
 # --- Обработчики команд ---
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -198,7 +224,7 @@ async def cmd_help(message: Message):
 
 @dp.message(Command("reviews"))
 async def cmd_new(message: Message):
-    await send_reviews()
+    await send_reviews(message.chat.id)
 
 # --- Планировщик задач ---
 scheduler = AsyncIOScheduler()
