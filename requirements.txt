@@ -18,3 +18,4 @@ pydantic_core==2.27.2
 typing_extensions==4.13.0
 yarl==1.18.3
 apscheduler
+google_play_scraper
