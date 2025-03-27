@@ -59,15 +59,13 @@ async def fetch_reviews_apple(app_id):
             text = await response.text()  # Получаем данные в виде строки
             try:
                 data = json.loads(text)  # Корректный парсинг
-            except aiohttp.ContentTypeError:
-                print("Ошибка: получен unexpected content-type")
+            except json.JSONDecodeError:
+                logging.error("Ошибка: получен неожиданный формат данных")
+                return []
 
             if "feed" in data and "entry" in data["feed"]:
                 reviews = data["feed"]["entry"][1:]  # Первый элемент — это мета-информация
                 reviews = sorted(reviews, key=lambda x: x["updated"]["label"], reverse=True)[:10]  # Ограничение до 10 отзывов
-                for review in reviews:
-                    print(review["updated"]["label"])  # Проверка дат
-                print("Полученные отзывы:", reviews)
                 return [
                     {
                         "rating": review["im:rating"]["label"],
@@ -94,7 +92,6 @@ async def fetch_rating_apple(app_id):
             text = await response.text()
             data = json.loads(text)
             if "results" in data and data["results"]:
-                print(data["results"][0]["averageUserRating"])  # Отладка
                 return round(data["results"][0]["averageUserRating"], 1)
     return None
 
