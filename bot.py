@@ -133,6 +133,10 @@ async def send_reviews(chat_id: int = None):
         else:
             for chat_id in chat_ids:
                 await bot.send_message(chat_id, f"<b>{app}</b>\n\nНовых отзывов нет.")
+    
+    if not any(app_reviews for app_reviews in reviews.values()):
+        for chat_id in chat_ids:
+            await bot.send_message(chat_id, "На сегодня новых отзывов нет.")
 
 async def get_ratings():
     """Получает средний рейтинг приложений"""
